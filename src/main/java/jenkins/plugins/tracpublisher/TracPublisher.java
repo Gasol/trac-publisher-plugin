@@ -11,6 +11,16 @@ import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
 
 import java.io.IOException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import javax.security.cert.X509Certificate;
 
 import net.sf.json.JSONObject;
 
@@ -53,9 +63,48 @@ public class TracPublisher extends Notifier {
 	@Override
 	public boolean perform(AbstractBuild<?, ?> build, Launcher launcher,
 			BuildListener listener) throws InterruptedException, IOException {
+		disableCertificateValidation();
 		new TracIssueUpdater(build, listener, rpcAddress, username, password,
 				useDetailedComments).updateIssues();
 		return true;
+	}
+	
+	public static void disableCertificateValidation() {
+		System.out.println("disableCertificateValidation");
+		// Create a trust manager that does not validate certificate chains
+		TrustManager[] trustAllCerts = new TrustManager[] { new X509TrustManager() {
+			public void checkClientTrusted(
+					java.security.cert.X509Certificate[] arg0, String arg1)
+					throws CertificateException {
+			}
+
+			public void checkServerTrusted(
+					java.security.cert.X509Certificate[] arg0, String arg1)
+					throws CertificateException {
+			}
+
+			public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+				return null;
+			}
+		}};
+
+		// Ignore differences between given hostname and certificate hostname
+		HostnameVerifier verifier = new HostnameVerifier() {
+			public boolean verify(String hostname, SSLSession session) {
+				return true;
+			}
+		};
+
+		// Install the all-trusting trust manager
+		try {
+			SSLContext sc = SSLContext.getInstance("SSL");
+			sc.init(null, trustAllCerts, new SecureRandom());
+			HttpsURLConnection
+					.setDefaultSSLSocketFactory(sc.getSocketFactory());
+			HttpsURLConnection.setDefaultHostnameVerifier(verifier);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Extension
